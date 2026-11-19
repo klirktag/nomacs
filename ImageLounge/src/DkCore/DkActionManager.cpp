@@ -485,6 +485,7 @@ QMenu *DkActionManager::createViewMenu(QWidget *parent /* = 0 */)
     mViewMenu->addAction(mViewActions[view_fullscreen]);
     mViewMenu->addSeparator();
 
+    mViewMenu->addAction(mViewActions[view_back]);
     mViewMenu->addAction(mViewActions[view_new_tab]);
     mViewMenu->addAction(mViewActions[view_close_tab]);
     mViewMenu->addAction(mViewActions[view_close_all_tabs]);
@@ -1272,6 +1273,13 @@ void DkActionManager::createActions(QWidget *parent)
 
     // view actions
     DkActionBuilder<ViewAction> viewActions(mViewActions, numViewActions, parent);
+
+    viewActions.add(view_back,
+                    "view_back",
+                    no_icon,
+                    QObject::tr("&Back"),
+                    QObject::tr("Return to the previous view or image"),
+                    shortcut_esc);
 
     viewActions.add(view_new_tab,
                     "view_new_tab",

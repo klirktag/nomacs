@@ -318,6 +318,7 @@ public:
         view_tp_pattern,
         view_frameless,
 
+        view_back,
         view_new_tab,
         view_close_tab,
         view_close_all_tabs,
