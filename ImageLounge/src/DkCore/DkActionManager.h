@@ -403,6 +403,7 @@ public:
         preview_select_all,
         preview_zoom_in,
         preview_zoom_out,
+        preview_zoom_reset,
         preview_display_squares,
         preview_show_labels,
         preview_copy,

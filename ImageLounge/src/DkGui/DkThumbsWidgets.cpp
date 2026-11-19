@@ -146,10 +146,59 @@ void DkFilePreview::resetThumbs()
     mThumbs.clear();
 }
 
+void DkFilePreview::resetThumbSize()
+{
+    setThumbSize(DkSettingsManager::param().defaultDisplay().thumbSize);
+}
+
+void DkFilePreview::zoomThumbs(float factor)
+{
+    if (windowPosition == pos_dock_hor || windowPosition == pos_dock_ver)
+        return;
+
+    setThumbSize(qRound(DkSettingsManager::param().display().thumbSize * factor));
+}
+
+void DkFilePreview::setThumbSize(int newSize)
+{
+    // divide by dpr since larger would blur the thumbnail
+    const int maxSize = DkSettingsManager::param().resources().maxThumbSize / devicePixelRatio();
+
+    newSize = qBound(8, newSize, maxSize);
+
+    // make sure it is even
+    if (newSize % 2 != 0)
+        newSize++;
+
+    if (newSize != DkSettingsManager::param().display().thumbSize) {
+        DkSettingsManager::param().display().thumbSize = newSize;
+        update();
+    }
+}
+
 void DkFilePreview::init()
 {
     setObjectName("DkFilePreview");
     setMouseTracking(true); // receive mouse event everytime
+    setFocusPolicy(Qt::ClickFocus); // allow keyboard zoom shortcuts
+
+    // use the same configurable zoom actions as the thumb view
+    DkActionManager &am = DkActionManager::instance();
+    addActions({am.action(DkActionManager::preview_zoom_in),
+                am.action(DkActionManager::preview_zoom_out),
+                am.action(DkActionManager::preview_zoom_reset)});
+    connect(am.action(DkActionManager::preview_zoom_in), &QAction::triggered, this, [this] {
+        if (isActive())
+            zoomThumbs(1.2f);
+    });
+    connect(am.action(DkActionManager::preview_zoom_out), &QAction::triggered, this, [this] {
+        if (isActive())
+            zoomThumbs(0.8f);
+    });
+    connect(am.action(DkActionManager::preview_zoom_reset), &QAction::triggered, this, [this] {
+        if (isActive())
+            resetThumbSize();
+    });
 
     xOffset = qRound(DkSettingsManager::param().effectiveThumbSize(this) * 0.1f);
     yOffset = qRound(DkSettingsManager::param().effectiveThumbSize(this) * 0.1f);
@@ -697,6 +746,8 @@ void DkFilePreview::mouseMoveEvent(QMouseEvent *event)
 
 void DkFilePreview::mousePressEvent(QMouseEvent *event)
 {
+    setFocus(Qt::MouseFocusReason);
+
     if (event->buttons() == Qt::LeftButton) {
         // TODO: change image on mouse down, not mouse up
         mouseTrace = 0;
@@ -732,22 +783,7 @@ void DkFilePreview::wheelEvent(QWheelEvent *event)
 {
     auto delta = event->angleDelta().y();
     if (event->modifiers() == Qt::CTRL && windowPosition != pos_dock_hor && windowPosition != pos_dock_ver) {
-        int newSize = DkSettingsManager::param().display().thumbSize;
-        newSize += qRound(delta * 0.05f);
-
-        // divide by dpr since larger would blur the thumbnail
-        const int maxSize = DkSettingsManager::param().resources().maxThumbSize / devicePixelRatio();
-
-        newSize = qBound(8, newSize, maxSize);
-
-        // make sure it is even
-        if (qRound(newSize * 0.5f) != newSize * 0.5f)
-            newSize++;
-
-        if (newSize != DkSettingsManager::param().display().thumbSize) {
-            DkSettingsManager::param().display().thumbSize = newSize;
-            update();
-        }
+        setThumbSize(DkSettingsManager::param().display().thumbSize + qRound(delta * 0.05f));
     } else if (delta != 0) {
         int fc = (delta > 0) ? -1 : 1;
 
@@ -1656,12 +1692,48 @@ void DkThumbScene::decreaseThumbs()
     resizeThumbs(0.8f);
 }
 
+void DkThumbScene::resetThumbs()
+{
+    constexpr int kThumbGap = 2; // gap between thumbs (see updateLayout)
+
+    QGraphicsView *view = getView();
+    const int count = mThumbs.size();
+    if (!view || count <= 0) {
+        setThumbSize(DkSettingsManager::param().defaultDisplay().thumbPreviewSize);
+        return;
+    }
+
+    // fit all thumbs into the viewport: pick the largest size that still fits
+    const qreal dpr = view->devicePixelRatio();
+    const QSize viewSize = view->viewport()->size();
+    const int maxSize = DkSettingsManager::param().resources().maxThumbSize;
+
+    int bestSize = 6;
+    for (int size = maxSize; size >= 6; size--) {
+        const int lsz = qMax(1, qRound(size / dpr));
+        const int cols = qMax(1, (viewSize.width() - kThumbGap) / (lsz + kThumbGap));
+        const int rows = qCeil(float(count) / cols);
+        const int height = rows * (lsz + kThumbGap) + kThumbGap;
+
+        if (height <= viewSize.height()) {
+            bestSize = size;
+            break;
+        }
+    }
+
+    setThumbSize(bestSize);
+}
+
 void DkThumbScene::resizeThumbs(float dx)
 {
     if (dx < 0)
         dx += 2.0f;
 
-    int newSize = qRound(DkSettingsManager::param().display().thumbPreviewSize * dx);
+    setThumbSize(qRound(DkSettingsManager::param().display().thumbPreviewSize * dx));
+}
+
+void DkThumbScene::setThumbSize(int newSize)
+{
     int maxSize = DkSettingsManager::param().resources().maxThumbSize;
 
     newSize = qBound(6, newSize, maxSize);
@@ -2365,6 +2437,7 @@ void DkThumbScrollWidget::createToolbar()
     DkActionManager &am = DkActionManager::instance();
     mToolbar->addAction(am.action(DkActionManager::preview_zoom_in));
     mToolbar->addAction(am.action(DkActionManager::preview_zoom_out));
+    mToolbar->addAction(am.action(DkActionManager::preview_zoom_reset));
     mToolbar->addAction(am.action(DkActionManager::preview_display_squares));
     mToolbar->addAction(am.action(DkActionManager::preview_show_labels));
     mToolbar->addSeparator();
@@ -2532,13 +2605,26 @@ void DkThumbScrollWidget::setVisible(bool visible)
     }
 
     DkWidget::setVisible(visible);
+
+    // keyboard shortcuts (zoom, navigation) need a focus widget
+    if (visible && mView)
+        mView->setFocus(Qt::OtherFocusReason);
 }
 
 void DkThumbScrollWidget::connectToActions(bool activate)
 {
     DkActionManager &am = DkActionManager::instance();
+
+    // zoom actions are shared with the film strip, so they stay enabled
+    const QList<QAction *> sharedZoomActions{
+        am.action(DkActionManager::preview_zoom_in),
+        am.action(DkActionManager::preview_zoom_out),
+        am.action(DkActionManager::preview_zoom_reset),
+    };
+
     for (QAction *a : am.previewActions()) {
-        a->setEnabled(activate);
+        if (!sharedZoomActions.contains(a))
+            a->setEnabled(activate);
     }
 
     if (activate) {
@@ -2554,6 +2640,10 @@ void DkThumbScrollWidget::connectToActions(bool activate)
                 &QAction::triggered,
                 mThumbsScene,
                 &DkThumbScene::decreaseThumbs);
+        connect(am.action(DkActionManager::preview_zoom_reset),
+                &QAction::triggered,
+                mThumbsScene,
+                &DkThumbScene::resetThumbs);
         connect(am.action(DkActionManager::preview_display_squares),
                 &QAction::triggered,
                 mThumbsScene,
@@ -2604,6 +2694,10 @@ void DkThumbScrollWidget::connectToActions(bool activate)
                    &QAction::triggered,
                    mThumbsScene,
                    &DkThumbScene::decreaseThumbs);
+        disconnect(am.action(DkActionManager::preview_zoom_reset),
+                   &QAction::triggered,
+                   mThumbsScene,
+                   &DkThumbScene::resetThumbs);
         disconnect(am.action(DkActionManager::preview_display_squares),
                    &QAction::triggered,
                    mThumbsScene,

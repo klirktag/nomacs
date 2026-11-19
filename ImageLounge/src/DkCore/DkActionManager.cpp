@@ -58,6 +58,19 @@
 namespace nmc
 {
 
+namespace
+{
+// QKeySequence::ZoomIn is only Ctrl++ and does not match Ctrl+Shift+= (the actual
+// key event on most layouts), so add the other common variants explicitly
+QList<QKeySequence> zoomInShortcuts()
+{
+    return {QKeySequence(QKeySequence::ZoomIn),
+            QKeySequence(Qt::CTRL | Qt::Key_Equal),
+            QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Plus),
+            QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_Equal)};
+}
+}
+
 // DkAppManager --------------------------------------------------------------------
 DkAppManager::DkAppManager(QWidget *parent)
     : QObject(parent)
@@ -1349,7 +1362,7 @@ void DkActionManager::createActions(QWidget *parent)
                     DkImage::loadIcon(":/nomacs/img/zoom-in.svg"),
                     QObject::tr("Zoom &In"),
                     QObject::tr("zoom in"),
-                    QKeySequence::ZoomIn);
+                    zoomInShortcuts());
 
     viewActions.add(view_zoom_out,
                     "view_zoom_out",
@@ -1644,7 +1657,7 @@ void DkActionManager::createActions(QWidget *parent)
                        DkImage::loadIcon(":/nomacs/img/zoom-in.svg"),
                        QObject::tr("Zoom &In"),
                        no_tooltip,
-                       QKeySequence::ZoomIn);
+                       zoomInShortcuts());
 
     previewActions.add(preview_zoom_out,
                        "preview_zoom_out",
@@ -1652,6 +1665,13 @@ void DkActionManager::createActions(QWidget *parent)
                        QObject::tr("Zoom &Out"),
                        no_tooltip,
                        QKeySequence::ZoomOut);
+
+    previewActions.add(preview_zoom_reset,
+                       "preview_zoom_reset",
+                       DkImage::loadIcon(":/nomacs/img/zoom-reset.svg"),
+                       QObject::tr("Reset &Zoom"),
+                       no_tooltip,
+                       QKeySequence(shortcut_reset_view));
 
     previewActions.addCheckable(preview_display_squares,
                                 "preview_display_squares",
@@ -1717,6 +1737,11 @@ void DkActionManager::createActions(QWidget *parent)
                        QObject::tr("&Batch Print"),
                        QObject::tr("Prints selected files."),
                        QKeySequence::Print); // FIXME: accelerator conflict
+
+    // thumbnail zoom actions are shared by the thumb view and the film strip; widget
+    // context avoids ambiguous shortcuts with the image view
+    for (PreviewAction id : {preview_zoom_in, preview_zoom_out, preview_zoom_reset})
+        mPreviewActions[id]->setShortcutContext(Qt::WidgetWithChildrenShortcut);
 
     // miscellaneous actions
     DkActionBuilder<MiscAction> miscActions(mMiscActions, numMiscActions, parent);

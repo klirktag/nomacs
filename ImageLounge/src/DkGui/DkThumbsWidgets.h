@@ -115,6 +115,9 @@ protected:
     void loadSettings();
     void saveSettings();
     void resetThumbs();
+    void resetThumbSize();
+    void zoomThumbs(float factor);
+    void setThumbSize(int newSize);
 
 private:
     QTransform worldMatrix;
@@ -281,6 +284,7 @@ public slots:
     void cancelLoading();
     void increaseThumbs();
     void decreaseThumbs();
+    void resetThumbs();
     void toggleSquaredThumbs(bool squares);
     void toggleThumbLabels(bool show);
     void resizeThumbs(float dx);
@@ -299,6 +303,7 @@ private:
     // return thumb in the middle of the (visible) view
     DkThumbLabel *getCenterThumb() const;
 
+    void setThumbSize(int newSize);
     void selectThumbs(bool select, int from, int to, bool extend);
     void connectLoader(QSharedPointer<DkImageLoader> loader, bool connectSignals = true);
     void keyPressEvent(QKeyEvent *event) override;
